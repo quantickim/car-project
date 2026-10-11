@@ -184,13 +184,13 @@ export function MarketPage({ catalog, carId, onCarChange, history }: Props) {
               ) : (
                 <p className="notice">
                   {IS_STATIC
-                    ? '아직 기록된 시세가 없습니다. 매일 오전 9시에 자동으로 기록됩니다.'
+                    ? '아직 기록된 시세가 없습니다. 데이터를 수집할 때마다 기록됩니다.'
                     : '아직 기록된 시세가 없습니다. 아래 버튼이나 `npm run snapshot`으로 매일 기록하면 추이가 그려집니다.'}
                 </p>
               )}
               {carHistory.length === 1 && <p className="muted">기록이 하루치뿐이라 점 하나만 보입니다. 날짜가 쌓이면 선으로 이어집니다.</p>}
               {IS_STATIC ? (
-                <p className="muted chart-card__actions">매일 오전 9시(KST)에 GitHub Actions가 시세를 수집·기록합니다.</p>
+                <p className="muted chart-card__actions">데이터 수집(npm run publish:data)할 때마다 그날 시세가 기록됩니다.</p>
               ) : (
                 <div className="chart-card__actions">
                   <button className="btn btn--small" onClick={recordToday} disabled={!history.available}>

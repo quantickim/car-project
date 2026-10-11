@@ -9,7 +9,19 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
-엔카 API는 CORS를 막기 때문에 **반드시 Vite 서버(`dev` 또는 `preview`)로 실행**해야 합니다. `/encar-api` 프록시가 엔카를 대신 호출합니다.
+엔카 API는 CORS를 막기 때문에 로컬에서는 **Vite 서버(`dev` 또는 `preview`)로 실행**해야 합니다. `/encar-api` 프록시가 엔카를 대신 호출합니다. 같은 Wi-Fi의 휴대폰에서는 터미널에 표시되는 `Network:` 주소로 접속합니다.
+
+## GitHub Pages 배포판
+
+https://quantickim.github.io/car-project/
+
+엔카는 해외 IP(GitHub Actions 포함)의 요청을 차단합니다. 그래서 배포판은 **국내 PC에서 수집한 데이터**를 씁니다.
+
+```bash
+npm run publish:data   # 엔카 수집 → data/listings.json·history.json 커밋 → 푸시 → Actions가 Pages 배포
+```
+
+배포판은 수집 시점 데이터로 동작합니다(헤더에 기준 시각 표시). 엔카 분류 조회가 필요한 '차종 추가'는 로컬 서버에서만 됩니다.
 
 ## 화면
 
@@ -36,8 +48,8 @@ npm run dev        # http://localhost:5173
 
 - 추천 탭에서 분석할 때마다 자동 기록 (하루 한 건, 같은 날은 덮어씀)
 - 시세 분석 탭의 '오늘 시세 기록' 버튼
-- `npm run snapshot` — 서버 없이 기본 카탈로그 전체 기록. 매일 자동으로 쌓으려면 crontab 예시:
-  `0 9 * * * cd /path/to/car-project && npm run snapshot`
+- `npm run snapshot` — 서버 없이 기본 카탈로그 전체 기록
+- `npm run publish:data` — 기록 + 배포판 데이터 갱신·푸시. 매일 실행하면 배포판의 시세 추이도 쌓입니다
 
 기록이 7일 이상 쌓이면 추천 표의 '실측 변동'에 같은 연식 매물 기준 실제 변동률이 표시됩니다.
 

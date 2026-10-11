@@ -1,23 +1,20 @@
-name: 엔카 수집 및 Pages 배포
+name: Pages 배포
 
+# 엔카는 GitHub Actions(해외 IP) 요청을 차단하므로 데이터 수집은 국내 PC에서
+# `npm run publish:data` 로 하고, 여기서는 커밋된 data/ 로 빌드·배포만 한다.
 on:
   push:
     branches: [main]
-  schedule:
-    - cron: '0 0 * * *' # 매일 09:00 KST
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
 concurrency:
   group: pages
-  cancel-in-progress: false
-
-env:
-  TZ: Asia/Seoul
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -32,18 +29,10 @@ jobs:
 
       - run: npm ci
 
-      - name: 엔카 매물 수집 + 시세 기록
-        run: npm run snapshot -- --static public/data
-
-      - name: 시세 기록 커밋
+      - name: 수집된 엔카 데이터 포함
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/history.json
-          if ! git diff --cached --quiet; then
-            git commit -m "data: 시세 기록 $(date +%F)"
-            git push
-          fi
+          mkdir -p public/data
+          cp data/listings.json data/history.json public/data/
 
       - name: 빌드
         run: npm run build
