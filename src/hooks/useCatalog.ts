@@ -8,5 +8,9 @@ export function useCatalog() {
   const catalog = useMemo(() => [...DEFAULT_CATALOG, ...custom], [custom]);
   const addCar = useCallback((car: CatalogCar) => setCustom((prev) => [...prev, { ...car, custom: true }]), [setCustom]);
   const removeCar = useCallback((id: string) => setCustom((prev) => prev.filter((c) => c.id !== id)), [setCustom]);
-  return { catalog, addCar, removeCar };
+  const updateCar = useCallback(
+    (id: string, patch: Partial<CatalogCar>) => setCustom((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c))),
+    [setCustom],
+  );
+  return { catalog, addCar, removeCar, updateCar };
 }

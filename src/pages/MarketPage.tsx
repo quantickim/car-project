@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { IS_STATIC } from '../api/client';
+import { isUsingFallback } from '../api/client';
 import { CarSelect } from '../components/CarSelect';
 import { HistoryChart } from '../components/charts/HistoryChart';
 import { MileageScatter } from '../components/charts/MileageScatter';
@@ -23,7 +23,7 @@ interface Props {
 
 export function MarketPage({ catalog, carId, onCarChange, history }: Props) {
   const car = catalog.find((c) => c.id === carId) ?? catalog[0];
-  const { loading, error, listings, modelListings } = useCarListings(car);
+  const { loading, error, listings, modelListings, refresh } = useCarListings(car);
   const [showTable, setShowTable] = useState(false);
   const [saving, setSaving] = useState<string>();
 
@@ -33,13 +33,16 @@ export function MarketPage({ catalog, carId, onCarChange, history }: Props) {
   const observed = observedChange(carHistory);
   const target = car.targetYear ? byYear.find((y) => y.year === car.targetYear) : undefined;
 
-  async function recordToday() {
-    const snap = makeSnapshot(car.id, listings);
-    if (!snap) return;
-    setSaving('저장 중…');
+  /** 엔카에서 새로 받아 차트를 갱신하고 그 시점 시세를 기록 */
+  async function recordNow() {
+    setSaving('엔카에서 새로 받는 중…');
     try {
+      const fresh = await refresh();
+      if (isUsingFallback()) return setSaving('실시간 조회에 실패해 기록하지 않았습니다');
+      const snap = makeSnapshot(car.id, fresh);
+      if (!snap) return setSaving('매물이 없어 기록하지 않았습니다');
       await history.save([snap]);
-      setSaving('오늘 시세를 기록했습니다');
+      setSaving(`${snap.count}대 시세를 기록했습니다`);
     } catch (e) {
       setSaving(String(e));
     }
@@ -57,12 +60,13 @@ export function MarketPage({ catalog, carId, onCarChange, history }: Props) {
         <dl className="car-spec__grid">
           <div>
             <dt>최고출력</dt>
-            <dd>{car.hp}마력</dd>
+            <dd>{car.hp ? `${car.hp}마력` : car.specStatus === 'loading' ? '조회 중…' : '-'}</dd>
           </div>
           <div>
             <dt>0-100 / 0-200</dt>
             <dd>
-              {car.zeroTo100}초{car.zeroTo200 ? ` / ${car.zeroTo200}초` : ''}
+              {car.zeroTo100 ? `${car.zeroTo100}초` : '-'}
+              {car.zeroTo200 ? ` / ${car.zeroTo200}초` : ''}
             </dd>
           </div>
           <div>
@@ -76,7 +80,7 @@ export function MarketPage({ catalog, carId, onCarChange, history }: Props) {
           <div>
             <dt>전장 / 전폭</dt>
             <dd>
-              {car.lengthMm.toLocaleString()} / {car.widthMm.toLocaleString()} mm
+              {car.lengthMm ? `${car.lengthMm.toLocaleString()} / ${car.widthMm.toLocaleString()} mm` : '-'}
             </dd>
           </div>
           <div>
@@ -182,24 +186,15 @@ export function MarketPage({ catalog, carId, onCarChange, history }: Props) {
               {carHistory.length > 0 ? (
                 <HistoryChart snapshots={carHistory} />
               ) : (
-                <p className="notice">
-                  {IS_STATIC
-                    ? '아직 기록된 시세가 없습니다. 데이터를 수집할 때마다 기록됩니다.'
-                    : '아직 기록된 시세가 없습니다. 아래 버튼이나 `npm run snapshot`으로 매일 기록하면 추이가 그려집니다.'}
-                </p>
+                <p className="notice">아직 기록된 시세가 없습니다. 아래 버튼이나 추천 탭의 '분석 시작'을 누르면 그 시점 시세가 기록됩니다.</p>
               )}
-              {carHistory.length === 1 && <p className="muted">기록이 하루치뿐이라 점 하나만 보입니다. 날짜가 쌓이면 선으로 이어집니다.</p>}
-              {IS_STATIC ? (
-                <p className="muted chart-card__actions">데이터 수집(npm run publish:data)할 때마다 그날 시세가 기록됩니다.</p>
-              ) : (
-                <div className="chart-card__actions">
-                  <button className="btn btn--small" onClick={recordToday} disabled={!history.available}>
-                    오늘 시세 기록
-                  </button>
-                  {saving && <span className="muted">{saving}</span>}
-                  {!history.available && <span className="muted">기록 저장은 `npm run dev` 서버에서만 가능합니다</span>}
-                </div>
-              )}
+              {carHistory.length === 1 && <p className="muted">기록이 한 번뿐이라 점 하나만 보입니다. 기록이 쌓이면 선으로 이어집니다.</p>}
+              <div className="chart-card__actions">
+                <button className="btn btn--small" onClick={recordNow} disabled={saving === '엔카에서 새로 받는 중…'}>
+                  지금 시세 새로 받아 기록
+                </button>
+                {saving && <span className="muted">{saving}</span>}
+              </div>
             </section>
           </div>
         </div>

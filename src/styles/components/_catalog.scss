@@ -17,24 +17,60 @@
   &__grid {
     width: 100%;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 12px;
-  }
-  &__desc {
-    grid-column: span 2;
-    @media (max-width: 420px) {
-      grid-column: auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    @include md {
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     }
-  }
-  &__badges {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    font-size: 13px;
+    gap: 12px;
   }
 }
 
-.cell-wrap {
-  white-space: normal !important;
-  min-width: 180px;
+.add-car__notice {
+  margin: 0;
+  width: 100%;
+}
+
+.catalog-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  @include md {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.catalog-item {
+  @include card;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  p {
+    margin: 0;
+  }
+  &__head {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  &__remove {
+    margin-left: auto;
+  }
+  &__specs {
+    font-size: 14px;
+  }
+  &__meta {
+    font-size: 12px;
+  }
+  &__failed {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 13px;
+  }
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { encar } from '../api/client';
+import { encar, isUsingFallback } from '../api/client';
 import { RetentionChart } from '../components/charts/RetentionChart';
 import { ConfidenceTag, GradeBadge } from '../components/GradeBadge';
 import type { CatalogCar } from '../data/catalog';
@@ -8,7 +8,7 @@ import { useNarrow } from '../hooks/useNarrow';
 import type { usePriceHistory } from '../hooks/usePriceHistory';
 import { analyzeCar, filterByBadges, gradeOf, type Depreciation } from '../lib/analysis';
 import { formatPct, formatPrice, formatSignedPct } from '../lib/format';
-import { makeSnapshot, observedChange, type PriceSnapshot } from '../lib/history';
+import { formatStamp, makeSnapshot, nowStamp, observedChange, type PriceSnapshot } from '../lib/history';
 import { median } from '../lib/stats';
 import { mapLimit } from '../lib/pool';
 
@@ -37,19 +37,25 @@ export function RecommendPage({ catalog, history, onOpenMarket }: Props) {
   const [rows, setRows] = useState<Row[]>([]);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [savedNote, setSavedNote] = useState<string>();
+  const [analyzedAt, setAnalyzedAt] = useState<string>();
   const started = useRef(false);
   const narrow = useNarrow();
 
   const candidates = useMemo(() => catalog.filter((c) => c.hp >= minHp), [catalog, minHp]);
 
-  async function run() {
+  /**
+   * fresh: '분석 시작' 버튼 — 캐시를 건너뛰고 엔카에서 새로 받아 분석하고, 그 시점 시세를 기록한다.
+   * 첫 진입 시 자동 분석은 최근 30분 캐시를 재사용하고 기록하지 않는다.
+   */
+  async function run(fresh: boolean) {
     setProgress({ done: 0, total: catalog.length });
+    setSavedNote(undefined);
     let done = 0;
     const snaps: PriceSnapshot[] = [];
     // 전 차종을 분석해 두고 마력 기준은 화면에서 거른다 (슬라이더를 움직여도 재요청 없음)
     const result = await mapLimit(catalog, 2, async (car): Promise<Row> => {
       try {
-        const { listings } = await encar.searchListings(car.encar);
+        const { listings } = await encar.searchListings(car.encar, undefined, undefined, fresh);
         const own = filterByBadges(listings, car.badges);
         const snap = makeSnapshot(car.id, own);
         if (snap) snaps.push(snap);
@@ -67,12 +73,13 @@ export function RecommendPage({ catalog, history, onOpenMarket }: Props) {
     });
     setRows(result);
     setProgress(null);
+    setAnalyzedAt(nowStamp());
 
-    // 분석할 때마다 오늘 시세를 기록해 두면 실제 시세 추이가 자동으로 쌓인다
-    if (history.available) {
+    // 수동 분석 때마다 그 시점 시세를 기록해 두면 실제 시세 추이가 쌓인다 (수집 데이터로 대체된 경우는 제외)
+    if (fresh && !isUsingFallback()) {
       history
         .save(snaps)
-        .then(() => setSavedNote(`오늘 시세 ${snaps.length}개 차종을 기록했습니다`))
+        .then(() => setSavedNote(`${snaps.length}개 차종 시세를 기록했습니다`))
         .catch(() => setSavedNote(undefined));
     }
   }
@@ -80,7 +87,7 @@ export function RecommendPage({ catalog, history, onOpenMarket }: Props) {
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    void run();
+    void run(false);
     // 첫 진입 시 한 번만 자동 실행
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -101,8 +108,8 @@ export function RecommendPage({ catalog, history, onOpenMarket }: Props) {
         <h2>고출력 가치방어 추천</h2>
         <p className="muted">
           같은 세대·같은 트림 매물을 차령별로 비교해, 지금 사서 3년·5년 뒤 팔 때 가격이 얼마나 남을지 추정합니다. 차령이 1년 늘 때의 가격
-          변화를 이상치에 강한 Theil–Sen 회귀로 구하며, 주행거리 증가분도 포함된 값입니다. 매일 기록되는 시세가 쌓이면 '실측 변동'에 실제
-          변화율이 함께 표시됩니다.
+          변화를 이상치에 강한 Theil–Sen 회귀로 구하며, 주행거리 증가분도 포함된 값입니다. '분석 시작'을 누를 때마다 엔카에서 새로 받아
+          분석하고 그 시점 시세를 기록하며, 기록이 일주일 이상 쌓이면 '실측 변동'에 실제 변화율이 표시됩니다.
         </p>
       </section>
 
@@ -118,11 +125,18 @@ export function RecommendPage({ catalog, history, onOpenMarket }: Props) {
             </button>
           ))}
         </div>
-        <button className="btn" onClick={run} disabled={!!progress}>
-          {progress ? `분석 중 ${progress.done}/${progress.total}` : '다시 분석'}
+        <button className="btn btn--primary" onClick={() => run(true)} disabled={!!progress}>
+          {progress ? `분석 중 ${progress.done}/${progress.total}` : '분석 시작'}
         </button>
-        <span className="muted">{candidates.length}개 차종 대상</span>
+        <span className="muted">
+          {candidates.length}개 차종 대상
+          {analyzedAt && ` · ${formatStamp(analyzedAt)} 분석`}
+          {savedNote && ` · ${savedNote}`}
+        </span>
       </div>
+      {isUsingFallback() && !progress && rows.length > 0 && (
+        <p className="notice">엔카 실시간 조회에 실패해 수집해 둔 데이터로 분석했습니다. 국내 네트워크에서 다시 시도해 보세요.</p>
+      )}
 
       {progress && rows.length === 0 && (
         <p className="notice">

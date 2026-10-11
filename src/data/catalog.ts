@@ -25,6 +25,12 @@ export interface CatalogCar {
   /** 엔카 분류와 정확히 맞지 않을 때의 메모 */
   note?: string;
   custom?: boolean;
+  /** 직접 추가한 차종의 제원 자동 조회 상태 */
+  specStatus?: 'loading' | 'done' | 'failed';
+  /** 제원 출처 (auto-data.net 트림명·주소) */
+  specSource?: { name: string; url: string };
+  /** 신차가 (만원, 엔카 상세 기준) */
+  originPrice?: number;
 }
 
 const audi = (modelGroup: string, model: string, badgeGroup?: string): EncarPath => ({

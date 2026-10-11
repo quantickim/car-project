@@ -2,11 +2,12 @@ import type { EncarListing } from '../api/types';
 import { groupBy, median } from './stats';
 
 /**
- * 하루 한 번 저장하는 차종별 시세 스냅샷.
+ * 분석할 때마다 저장하는 차종별 시세 스냅샷.
  * 같은 모델연식 매물의 중앙값을 날짜별로 이어 붙이면 "같은 차가 시간이 지나며 얼마나 변했는지"를 직접 볼 수 있다.
  */
 export interface PriceSnapshot {
-  date: string; // YYYY-MM-DD
+  /** 기록 시각 (YYYY-MM-DDTHH:mm, 현지 시각). 예전 기록은 YYYY-MM-DD */
+  date: string;
   carId: string;
   count: number;
   median: number;
@@ -17,10 +18,19 @@ export interface HistoryFile {
   snapshots: PriceSnapshot[];
 }
 
-export const today = (d = new Date()) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const pad = (n: number) => String(n).padStart(2, '0');
 
-export function makeSnapshot(carId: string, listings: EncarListing[], date = today()): PriceSnapshot | null {
+export const nowStamp = (d = new Date()) =>
+  `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+/** "2026-10-11T22:40" → "10/11 22:40", "2026-10-11" → "10/11" */
+export function formatStamp(stamp: string): string {
+  const [date, time] = stamp.split('T');
+  const [, m, d] = date.split('-');
+  return `${Number(m)}/${Number(d)}${time ? ` ${time}` : ''}`;
+}
+
+export function makeSnapshot(carId: string, listings: EncarListing[], date = nowStamp()): PriceSnapshot | null {
   if (listings.length === 0) return null;
   const byYear: PriceSnapshot['byYear'] = {};
   for (const [year, ls] of groupBy(listings, (l) => l.FormYear || String(Math.floor(l.Year / 100)))) {

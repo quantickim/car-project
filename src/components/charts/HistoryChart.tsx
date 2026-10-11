@@ -1,12 +1,12 @@
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import type { PriceSnapshot } from '../../lib/history';
+import { formatStamp, type PriceSnapshot } from '../../lib/history';
 import { formatPrice, formatPriceShort } from '../../lib/format';
 import { Legend, TooltipBox } from './ChartTooltip';
 import { axisProps, chart, SERIES } from './theme';
 
 const MAX_COHORTS = 4;
 
-/** 기록된 날짜별 시세. 매물이 많은 모델연식 최대 4개를 각각 선으로 추적 */
+/** 기록된 시점별 시세. 매물이 많은 모델연식 최대 4개를 각각 선으로 추적 */
 export function HistoryChart({ snapshots }: { snapshots: PriceSnapshot[] }) {
   const sorted = [...snapshots].sort((a, b) => a.date.localeCompare(b.date));
   const latest = sorted[sorted.length - 1];
@@ -27,7 +27,7 @@ export function HistoryChart({ snapshots }: { snapshots: PriceSnapshot[] }) {
       <ResponsiveContainer width="100%" height={260}>
         <LineChart data={rows} margin={{ top: 16, right: 16, bottom: 0, left: 0 }}>
           <CartesianGrid stroke={chart.grid} vertical={false} />
-          <XAxis dataKey="date" {...axisProps} tickFormatter={(d: string) => d.slice(5).replace('-', '/')} />
+          <XAxis dataKey="date" {...axisProps} tickFormatter={formatStamp} minTickGap={24} />
           <YAxis {...axisProps} axisLine={false} width={56} tickFormatter={formatPriceShort} domain={['auto', 'auto']} />
           <Tooltip
             cursor={{ stroke: chart.axis }}
@@ -35,7 +35,7 @@ export function HistoryChart({ snapshots }: { snapshots: PriceSnapshot[] }) {
               if (!active || !payload?.length) return null;
               return (
                 <TooltipBox
-                  title={label}
+                  title={formatStamp(String(label))}
                   rows={cohorts
                     .map((y, i) => ({ y, i, v: (payload[0].payload as Record<string, number>)[y] }))
                     .filter((r) => r.v != null)

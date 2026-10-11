@@ -25,6 +25,16 @@ const RETRY_DELAYS_MS = [1500, 4000, 10000];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** 엔카는 요청이 몰리면 IP를 잠시 차단(407/429)하므로 요청 사이에 최소 간격을 둔다 */
+const MIN_INTERVAL_MS = 300;
+let nextSlot = 0;
+async function throttle() {
+  const now = Date.now();
+  const wait = Math.max(0, nextSlot - now);
+  nextSlot = Math.max(now, nextSlot) + MIN_INTERVAL_MS;
+  if (wait > 0) await sleep(wait);
+}
+
 /** 캐시 크기를 줄이려고 화면·분석에 쓰는 필드만 남긴다 */
 function slim(l: EncarListing): EncarListing {
   const first = [...(l.Photos ?? [])].sort((a, b) => a.ordering - b.ordering)[0];
@@ -104,21 +114,23 @@ export function createEncarClient({ baseUrl, headers, storage }: EncarClientOpti
 
   async function fetchJson<T>(url: string): Promise<T> {
     for (let attempt = 0; ; attempt++) {
+      await throttle();
       const res = await fetch(url, { headers });
       if (res.ok) return (await res.json()) as T;
       if (res.status === 429 && attempt < RETRY_DELAYS_MS.length) {
         await sleep(RETRY_DELAYS_MS[attempt]);
         continue;
       }
-      throw new Error(res.status === 429 ? '엔카 요청 한도 초과 — 잠시 후 다시 시도하세요' : `엔카 API 오류 ${res.status}`);
+      if (res.status === 429 || res.status === 407) throw new Error('엔카가 요청을 잠시 차단했습니다 (요청이 많았음). 잠시 후 다시 시도하세요');
+      throw new Error(`엔카 API 오류 ${res.status}`);
     }
   }
 
-  function get<T>(path: string, params: Record<string, string>): Promise<T> {
+  function get<T>(path: string, params: Record<string, string>, fresh = false): Promise<T> {
     const qs = new URLSearchParams(params).toString();
     const url = `${baseUrl}${path}?${qs}`;
     const hit = cache.get(url);
-    if (hit) return hit as Promise<T>;
+    if (hit && !fresh) return hit as Promise<T>;
     const p = fetchJson<T>(url);
     cache.set(url, p);
     p.catch(() => cache.delete(url));
@@ -147,14 +159,17 @@ export function createEncarClient({ baseUrl, headers, storage }: EncarClientOpti
 
   const inflight = new Map<string, Promise<SearchResult>>();
 
-  /** 조건에 맞는 매물을 페이지를 넘겨가며 최대 1000건까지 가져온다 */
-  function searchListings(path: EncarPath, range?: SearchRange, sort: SortKey = 'ModifiedDate'): Promise<SearchResult> {
+  /**
+   * 조건에 맞는 매물을 페이지를 넘겨가며 최대 1000건까지 가져온다.
+   * `fresh` 면 캐시를 건너뛰고 엔카에서 새로 받는다 ('분석 시작' 버튼).
+   */
+  function searchListings(path: EncarPath, range?: SearchRange, sort: SortKey = 'ModifiedDate', fresh = false): Promise<SearchResult> {
     const key = `encar:${sort}:${buildQuery(path, range)}`;
-    const stored = readStored(key);
+    const stored = fresh ? null : readStored(key);
     if (stored) return Promise.resolve(stored);
     let p = inflight.get(key);
     if (!p) {
-      p = fetchListings(path, range, sort).then((r) => {
+      p = fetchListings(path, range, sort, fresh).then((r) => {
         writeStored(key, r);
         return r;
       });
@@ -164,16 +179,16 @@ export function createEncarClient({ baseUrl, headers, storage }: EncarClientOpti
     return p;
   }
 
-  async function fetchListings(path: EncarPath, range: SearchRange | undefined, sort: SortKey): Promise<SearchResult> {
+  async function fetchListings(path: EncarPath, range: SearchRange | undefined, sort: SortKey, fresh: boolean): Promise<SearchResult> {
     const q = buildQuery(path, range);
     const all: EncarListing[] = [];
     let total = 0;
     for (let offset = 0; offset < MAX_LISTINGS; offset += PAGE_SIZE) {
-      const data = await get<EncarSearchResponse>('/search/car/list/general', {
-        count: 'true',
-        q,
-        sr: `|${sort}|${offset}|${PAGE_SIZE}`,
-      });
+      const data = await get<EncarSearchResponse>(
+        '/search/car/list/general',
+        { count: 'true', q, sr: `|${sort}|${offset}|${PAGE_SIZE}` },
+        fresh,
+      );
       total = data.Count;
       all.push(...data.SearchResults);
       if (data.SearchResults.length < PAGE_SIZE || all.length >= total) break;
@@ -196,7 +211,26 @@ export function createEncarClient({ baseUrl, headers, storage }: EncarClientOpti
     return deepestChildren(root?.Facets ?? []) ?? { level: '', facets: [] };
   }
 
-  return { searchListings, fetchFacets };
+  /** 매물 상세: 영문 차명, 연료, 신차가 등 (제원 자동 조회용) */
+  function fetchVehicle(id: string): Promise<VehicleDetail> {
+    return get<VehicleDetail>(`/v1/readside/vehicle/${id}`, { include: 'CATEGORY,SPEC' });
+  }
+
+  return { searchListings, fetchFacets, fetchVehicle };
+}
+
+export interface VehicleDetail {
+  category: {
+    manufacturerEnglishName: string;
+    modelGroupEnglishName: string;
+    modelName: string;
+    gradeName: string;
+    gradeEnglishName: string | null;
+    formYear: string;
+    /** 신차가 (만원) */
+    originPrice: number | null;
+  };
+  spec: { fuelName: string; displacement: number | null; bodyName: string | null };
 }
 
 interface NavFacet {
@@ -232,4 +266,4 @@ export function photoUrl(l: Pick<EncarListing, 'Photo' | 'Photos'>): string | un
 
 export const detailUrl = (id: string) => `https://fem.encar.com/cars/detail/${id}`;
 
-export type EncarClient = Pick<ReturnType<typeof createEncarClient>, 'searchListings' | 'fetchFacets'>;
+export type EncarClient = ReturnType<typeof createEncarClient>;

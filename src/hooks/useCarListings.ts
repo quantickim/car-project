@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { encar } from '../api/client';
 import type { EncarListing } from '../api/types';
 import type { CatalogCar } from '../data/catalog';
@@ -14,8 +14,17 @@ interface State {
 }
 
 /** 차종 하나의 현재 전체 매물 (시세 분석용, 조건 필터 없음) */
-export function useCarListings(car: CatalogCar | undefined): State {
+export function useCarListings(car: CatalogCar | undefined): State & { refresh: () => Promise<EncarListing[]> } {
   const [state, setState] = useState<State>({ loading: false, modelListings: [], listings: [] });
+  const [version, setVersion] = useState(0);
+
+  /** 엔카에서 새로 받아 화면을 갱신하고, 배지 일치 매물을 돌려준다 */
+  const refresh = useCallback(async () => {
+    if (!car) return [];
+    const { listings } = await encar.searchListings(car.encar, undefined, undefined, true);
+    setVersion((v) => v + 1);
+    return filterByBadges(listings, car.badges);
+  }, [car]);
 
   useEffect(() => {
     if (!car) return;
@@ -30,7 +39,7 @@ export function useCarListings(car: CatalogCar | undefined): State {
     return () => {
       alive = false;
     };
-  }, [car]);
+  }, [car, version]);
 
-  return state;
+  return { ...state, refresh };
 }

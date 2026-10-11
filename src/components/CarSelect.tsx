@@ -15,7 +15,8 @@ export function CarSelect({ catalog, value, onChange }: { catalog: CatalogCar[];
             {cars.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
-                {c.targetYear ? ` [${String(c.targetYear).slice(2)}년식]` : ''} · {c.hp}마력
+                {c.targetYear ? ` [${String(c.targetYear).slice(2)}년식]` : ''}
+                {c.hp ? ` · ${c.hp}마력` : ''}
               </option>
             ))}
           </optgroup>

@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { encar, IS_STATIC } from '../api/client';
+import { encar } from '../api/client';
 import type { EncarPath, Facet } from '../api/types';
 import type { CatalogCar } from '../data/catalog';
+import { resolveCarInfo } from '../lib/autoSpec';
 
 interface Props {
   catalog: CatalogCar[];
   onAdd: (car: CatalogCar) => void;
+  onUpdate: (id: string, patch: Partial<CatalogCar>) => void;
   onRemove: (id: string) => void;
   onOpenMarket: (carId: string) => void;
 }
@@ -13,13 +15,14 @@ interface Props {
 type Level = 'manufacturer' | 'modelGroup' | 'model' | 'badgeGroup';
 const LEVELS: Level[] = ['manufacturer', 'modelGroup', 'model', 'badgeGroup'];
 const LEVEL_LABEL: Record<Level, string> = { manufacturer: '제조사', modelGroup: '모델', model: '세대', badgeGroup: '연료/구동' };
+const ALL_TRIMS = '*';
 
 /** 선택한 단계까지의 경로로 다음 단계 후보를 엔카에서 받아온다 */
 function useFacets(path: Partial<EncarPath> & { carType: 'N' | 'Y' }, enabled: boolean) {
   const [facets, setFacets] = useState<Facet[]>([]);
   const key = JSON.stringify(path);
   useEffect(() => {
-    if (!enabled || IS_STATIC) return setFacets([]);
+    if (!enabled) return setFacets([]);
     let alive = true;
     encar
       .fetchFacets(path)
@@ -34,11 +37,18 @@ function useFacets(path: Partial<EncarPath> & { carType: 'N' | 'Y' }, enabled: b
   return facets;
 }
 
-export function CatalogPage({ catalog, onAdd, onRemove, onOpenMarket }: Props) {
+const sameCar = (c: CatalogCar, path: EncarPath, badges?: string[]) =>
+  c.encar.manufacturer === path.manufacturer &&
+  c.encar.model === path.model &&
+  (c.encar.badgeGroup ?? '') === (path.badgeGroup ?? '') &&
+  (c.badges ?? []).join('|') === (badges ?? []).join('|');
+
+export function CatalogPage({ catalog, onAdd, onUpdate, onRemove, onOpenMarket }: Props) {
   const [carType, setCarType] = useState<'N' | 'Y'>('N');
   const [path, setPath] = useState<Partial<Record<Level, string>>>({});
-  const [badges, setBadges] = useState<string[]>([]);
-  const [form, setForm] = useState({ name: '', hp: '', zeroTo100: '', targetYear: '', topSpeed: '', description: '' });
+  const [notice, setNotice] = useState<string>();
+  // 직접 추가한 차종(최근 순)을 위에
+  const ordered = [...catalog.filter((c) => c.custom).reverse(), ...catalog.filter((c) => !c.custom)];
 
   const pick = (level: Level, value: string) => {
     const idx = LEVELS.indexOf(level);
@@ -46,7 +56,7 @@ export function CatalogPage({ catalog, onAdd, onRemove, onOpenMarket }: Props) {
     LEVELS.slice(0, idx).forEach((l) => (next[l] = path[l]));
     if (value) next[level] = value;
     setPath(next);
-    setBadges([]);
+    setNotice(undefined);
   };
 
   const options: Record<Level, Facet[]> = {
@@ -55,191 +65,156 @@ export function CatalogPage({ catalog, onAdd, onRemove, onOpenMarket }: Props) {
     model: useFacets({ carType, manufacturer: path.manufacturer, modelGroup: path.modelGroup }, !!path.modelGroup),
     badgeGroup: useFacets({ carType, manufacturer: path.manufacturer, modelGroup: path.modelGroup, model: path.model }, !!path.model),
   };
-  const badgeOptions = useFacets(
+  const trims = useFacets(
     { carType, manufacturer: path.manufacturer, modelGroup: path.modelGroup, model: path.model, badgeGroup: path.badgeGroup },
     !!path.badgeGroup,
   );
 
-  const ready = !!(path.manufacturer && path.modelGroup && path.model) && form.hp !== '';
-  const autoName = [path.manufacturer, path.model, badges[0]].filter(Boolean).join(' ');
+  /** 제원 자동 조회 (실패해도 차종은 남겨 두고 '다시 조회'로 재시도) */
+  function fillInfo(car: CatalogCar) {
+    onUpdate(car.id, { specStatus: 'loading' });
+    resolveCarInfo(car.encar, car.badges)
+      .then((info) => onUpdate(car.id, info))
+      .catch((e: unknown) =>
+        onUpdate(car.id, { specStatus: 'failed', description: e instanceof Error ? e.message : '정보를 찾지 못했습니다' }),
+      );
+  }
 
-  function submit() {
-    if (!ready) return;
-    onAdd({
+  /** 트림을 고르면 바로 추가하고, 나머지 정보는 자동으로 채운다 */
+  function addTrim(trim: string) {
+    if (!trim || !path.manufacturer || !path.modelGroup || !path.model || !path.badgeGroup) return;
+    const encarPath: EncarPath = {
+      carType,
+      manufacturer: path.manufacturer,
+      modelGroup: path.modelGroup,
+      model: path.model,
+      badgeGroup: path.badgeGroup,
+    };
+    const badges = trim === ALL_TRIMS ? undefined : [trim];
+    if (catalog.some((c) => sameCar(c, encarPath, badges))) return setNotice('이미 추가된 차종입니다');
+
+    const car: CatalogCar = {
       id: `custom-${Date.now()}`,
-      name: form.name.trim() || autoName,
-      hp: Number(form.hp),
-      zeroTo100: Number(form.zeroTo100) || 0,
-      topSpeed: form.topSpeed || '-',
+      name: [path.manufacturer, path.model, trim === ALL_TRIMS ? path.badgeGroup : trim].join(' '),
+      hp: 0,
+      zeroTo100: 0,
+      topSpeed: '-',
       suspension: '-',
       lengthMm: 0,
       widthMm: 0,
-      description: form.description,
-      targetYear: Number(form.targetYear) || undefined,
-      encar: { carType, manufacturer: path.manufacturer!, modelGroup: path.modelGroup!, model: path.model!, badgeGroup: path.badgeGroup },
-      badges: badges.length ? badges : undefined,
-    });
-    setPath({});
-    setBadges([]);
-    setForm({ name: '', hp: '', zeroTo100: '', targetYear: '', topSpeed: '', description: '' });
+      description: '',
+      encar: encarPath,
+      badges,
+      specStatus: 'loading',
+    };
+    onAdd(car);
+    fillInfo(car);
+    setNotice(`'${car.name}' 추가됨 — 제원을 자동으로 찾는 중입니다`);
   }
 
   return (
     <div className="catalog-page">
-      {IS_STATIC ? (
-        <p className="notice">
-          차종 추가는 엔카를 실시간 조회해야 해서 로컬 서버(`npm run dev`)에서만 됩니다. 배포판 차종을 바꾸려면 src/data/catalog.ts 를
-          수정해 푸시하세요.
+      <section className="add-car">
+        <h2>차종 추가</h2>
+        <p className="muted">
+          트림까지 고르면 바로 추가됩니다. 마력·제로백·최고속도는 auto-data.net, 신차가와 관심 연식은 엔카 매물에서 자동으로 채웁니다.
         </p>
-      ) : (
-        <section className="add-car">
-          <h2>차종 추가</h2>
-          <p className="muted">엔카 분류를 차례로 고르면 그 차종의 매물로 검색·시세·추천 분석을 합니다.</p>
-          <div className="add-car__grid">
-            <label className="field">
-              구분
-              <select
-                value={carType}
-                onChange={(e) => {
-                  setCarType(e.target.value as 'N' | 'Y');
-                  setPath({});
-                  setBadges([]);
-                }}
-              >
-                <option value="N">수입</option>
-                <option value="Y">국산</option>
-              </select>
-            </label>
-            {LEVELS.map((level, i) => {
-              const enabled = i === 0 || !!path[LEVELS[i - 1]];
-              return (
-                <label className="field" key={level}>
-                  {LEVEL_LABEL[level]}
-                  {level === 'badgeGroup' && <span className="muted"> (선택)</span>}
-                  <select value={path[level] ?? ''} disabled={!enabled} onChange={(e) => pick(level, e.target.value)}>
-                    <option value="">선택</option>
-                    {options[level].map((f) => (
-                      <option key={f.value} value={f.value}>
-                        {f.value} ({f.count.toLocaleString()})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              );
-            })}
-          </div>
-
-          {badgeOptions.length > 0 && (
-            <div className="add-car__badges">
-              <span className="muted">트림 (여러 개 선택 가능, 선택하지 않으면 전체)</span>
-              <div className="chips">
-                {badgeOptions.map((f) => {
-                  const on = badges.includes(f.value);
-                  return (
-                    <button
-                      key={f.value}
-                      className={`chip${on ? ' is-on' : ''}`}
-                      aria-pressed={on}
-                      onClick={() => setBadges(on ? badges.filter((b) => b !== f.value) : [...badges, f.value])}
-                    >
-                      {f.value}
-                      <span className="chip__meta">{f.count}대</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          <div className="add-car__grid">
-            <label className="field">
-              이름
-              <input placeholder={autoName || '자동 생성'} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            </label>
-            <label className="field">
-              최고출력 (마력) *
-              <input inputMode="numeric" value={form.hp} onChange={(e) => setForm({ ...form, hp: e.target.value })} />
-            </label>
-            <label className="field">
-              0-100 (초)
-              <input inputMode="decimal" value={form.zeroTo100} onChange={(e) => setForm({ ...form, zeroTo100: e.target.value })} />
-            </label>
-            <label className="field">
-              관심 연식
-              <input
-                inputMode="numeric"
-                placeholder="예: 2019"
-                value={form.targetYear}
-                onChange={(e) => setForm({ ...form, targetYear: e.target.value })}
-              />
-            </label>
-            <label className="field">
-              최고 속도
-              <input
-                placeholder="예: 250 km/h (제한)"
-                value={form.topSpeed}
-                onChange={(e) => setForm({ ...form, topSpeed: e.target.value })}
-              />
-            </label>
-            <label className="field add-car__desc">
-              특징 메모
-              <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-            </label>
-          </div>
-          <button className="btn btn--primary" disabled={!ready} onClick={submit}>
-            카탈로그에 추가
-          </button>
-        </section>
-      )}
+        <div className="add-car__grid">
+          <label className="field">
+            구분
+            <select
+              value={carType}
+              onChange={(e) => {
+                setCarType(e.target.value as 'N' | 'Y');
+                setPath({});
+              }}
+            >
+              <option value="N">수입</option>
+              <option value="Y">국산</option>
+            </select>
+          </label>
+          {LEVELS.map((level, i) => {
+            const enabled = i === 0 || !!path[LEVELS[i - 1]];
+            return (
+              <label className="field" key={level}>
+                {LEVEL_LABEL[level]}
+                <select value={path[level] ?? ''} disabled={!enabled} onChange={(e) => pick(level, e.target.value)}>
+                  <option value="">선택</option>
+                  {options[level].map((f) => (
+                    <option key={f.value} value={f.value}>
+                      {f.value} ({f.count.toLocaleString()})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            );
+          })}
+          <label className="field">
+            트림
+            <select value="" disabled={!path.badgeGroup} onChange={(e) => addTrim(e.target.value)}>
+              <option value="">선택하면 추가</option>
+              {trims.length > 1 && <option value={ALL_TRIMS}>전체 트림 ({path.badgeGroup})</option>}
+              {trims.map((f) => (
+                <option key={f.value} value={f.value}>
+                  {f.value} ({f.count.toLocaleString()})
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {notice && <p className="notice add-car__notice">{notice}</p>}
+      </section>
 
       <div className="section-title">
         <h2>관심 차종 {catalog.length}개</h2>
-        <span className="muted">기본 목록은 test.txt 기준 (src/data/catalog.ts)</span>
+        <span className="muted">기본 목록은 test.txt 기준</span>
       </div>
-      <div className="table-wrap">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>차종</th>
-              <th className="num">출력</th>
-              <th className="num">0-100 / 0-200</th>
-              <th>최고 속도</th>
-              <th>서스펜션</th>
-              <th>엔카 분류</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {catalog.map((c) => (
-              <tr key={c.id}>
-                <td>
-                  <button className="link-btn" onClick={() => onOpenMarket(c.id)}>
-                    {c.name}
-                  </button>
-                  {c.targetYear && <span className="muted"> [{String(c.targetYear).slice(2)}년식]</span>}
-                </td>
-                <td className="num">{c.hp}마력</td>
-                <td className="num">
-                  {c.zeroTo100 || '-'}초{c.zeroTo200 ? ` / ${c.zeroTo200}초` : ''}
-                </td>
-                <td>{c.topSpeed}</td>
-                <td className="cell-wrap">{c.suspension}</td>
-                <td className="muted cell-wrap">
-                  {c.encar.model}
-                  {c.badges?.length ? ` · ${c.badges.join(', ')}` : c.encar.badgeGroup ? ` · ${c.encar.badgeGroup}` : ''}
-                </td>
-                <td>
-                  {c.custom && (
-                    <button className="btn btn--small" onClick={() => onRemove(c.id)}>
-                      삭제
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <ul className="catalog-list">
+        {ordered.map((c) => (
+          <li key={c.id} className="catalog-item">
+            <div className="catalog-item__head">
+              <button className="link-btn" onClick={() => onOpenMarket(c.id)}>
+                {c.name}
+              </button>
+              {c.targetYear && <span className="muted">[{String(c.targetYear).slice(2)}년식]</span>}
+              {c.custom && (
+                <button className="btn btn--small catalog-item__remove" onClick={() => onRemove(c.id)}>
+                  삭제
+                </button>
+              )}
+            </div>
+            {c.specStatus === 'loading' ? (
+              <p className="muted catalog-item__specs">제원 자동 조회 중…</p>
+            ) : (
+              <p className="catalog-item__specs">
+                {c.hp ? `${c.hp}마력` : '마력 미상'} · 0-100 {c.zeroTo100 ? `${c.zeroTo100}초` : '-'}
+                {c.zeroTo200 ? ` / 0-200 ${c.zeroTo200}초` : ''} · 최고 {c.topSpeed}
+                {c.originPrice ? ` · 신차가 ${c.originPrice.toLocaleString()}만원` : ''}
+              </p>
+            )}
+            <p className="muted catalog-item__meta">
+              엔카: {c.encar.model}
+              {c.badges?.length ? ` · ${c.badges.join(', ')}` : c.encar.badgeGroup ? ` · ${c.encar.badgeGroup}` : ''}
+              {c.specSource && (
+                <>
+                  {' · '}
+                  <a href={c.specSource.url} target="_blank" rel="noreferrer">
+                    제원 출처
+                  </a>
+                </>
+              )}
+            </p>
+            {c.custom && c.specStatus === 'failed' && (
+              <p className="catalog-item__failed">
+                <span className="muted">{c.description || '제원을 찾지 못했습니다'}</span>
+                <button className="btn btn--small" onClick={() => fillInfo(c)}>
+                  다시 조회
+                </button>
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

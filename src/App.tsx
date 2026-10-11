@@ -26,7 +26,7 @@ const THEME_LABEL: Record<Theme, string> = { system: '◐ 자동', light: '☀ �
 export default function App() {
   const [tab, setTab] = useLocalStorage<Tab>('car:tab', 'recommend');
   const [theme, setTheme] = useLocalStorage<Theme>('car:theme', 'system');
-  const { catalog, addCar, removeCar } = useCatalog();
+  const { catalog, addCar, removeCar, updateCar } = useCatalog();
   const favorites = useFavorites();
   const history = usePriceHistory();
   const [marketCarId, setMarketCarId] = useLocalStorage('car:market-car', catalog[0].id);
@@ -93,7 +93,7 @@ export default function App() {
         {tab === 'search' && <SearchPage catalog={catalog} favorites={favorites} />}
         {tab === 'favorites' && <FavoritesPage favorites={favorites} />}
         {tab === 'market' && <MarketPage catalog={catalog} carId={marketCarId} onCarChange={setMarketCarId} history={history} />}
-        {tab === 'catalog' && <CatalogPage catalog={catalog} onAdd={addCar} onRemove={removeCar} onOpenMarket={openMarket} />}
+        {tab === 'catalog' && <CatalogPage catalog={catalog} onAdd={addCar} onUpdate={updateCar} onRemove={removeCar} onOpenMarket={openMarket} />}
       </main>
     </>
   );
