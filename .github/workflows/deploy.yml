@@ -1,0 +1,66 @@
+name: 엔카 수집 및 Pages 배포
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 0 * * *' # 매일 09:00 KST
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  TZ: Asia/Seoul
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: 엔카 매물 수집 + 시세 기록
+        run: npm run snapshot -- --static public/data
+
+      - name: 시세 기록 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/history.json
+          if ! git diff --cached --quiet; then
+            git commit -m "data: 시세 기록 $(date +%F)"
+            git push
+          fi
+
+      - name: 빌드
+        run: npm run build
+        env:
+          VITE_STATIC_DATA: 'true'
+          BASE_PATH: /${{ github.event.repository.name }}/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

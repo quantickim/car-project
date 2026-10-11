@@ -1,0 +1,123 @@
+@use '../mixins' as *;
+
+.listing-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  @include md {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 14px;
+  }
+}
+
+.listing-card {
+  @include card;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+
+  &__photo {
+    position: relative;
+    display: grid;
+    place-items: center;
+    aspect-ratio: 5 / 3;
+    overflow: hidden;
+    background: var(--surface-2);
+    img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+  }
+
+  &__fav {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(0, 0, 0, 0.45);
+    color: #fff;
+    font-size: 18px;
+    line-height: 1;
+    &.is-on {
+      background: #fff;
+      color: var(--critical);
+    }
+  }
+
+  &__body {
+    padding: 8px 10px 10px;
+    font-size: 13px;
+    @include md {
+      padding: 10px 12px 12px;
+      font-size: 15px;
+    }
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  &__title {
+    color: var(--text);
+    font-weight: 600;
+    text-decoration: none;
+    span {
+      font-weight: 400;
+      color: var(--text-2);
+    }
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+  &__meta {
+    font-size: 12px;
+    color: var(--text-muted);
+    @include md {
+      font-size: 13px;
+    }
+  }
+  &__price {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 2px 8px;
+    margin-top: 2px;
+    strong {
+      font-size: 16px;
+      @include md {
+        font-size: 17px;
+      }
+    }
+  }
+}
+
+.delta {
+  font-size: 12px;
+  font-weight: 600;
+  &--good {
+    color: var(--good-ink);
+  }
+  &--bad {
+    color: var(--critical-ink);
+  }
+}
+
+.favorite-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  &__car {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-2);
+  }
+  &__date {
+    font-size: 12px;
+  }
+}

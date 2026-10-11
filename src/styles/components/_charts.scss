@@ -1,0 +1,122 @@
+@use '../mixins' as *;
+
+.chart-grid {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+  @include lg {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.chart-card {
+  @include card;
+  padding: 16px;
+  min-width: 0;
+  margin-bottom: 16px;
+  .chart-grid & {
+    margin-bottom: 0;
+  }
+  &--wide {
+    @include lg {
+      grid-column: 1 / -1;
+    }
+  }
+  header {
+    margin-bottom: 8px;
+    h3 {
+      font-size: 15px;
+    }
+    p {
+      margin: 2px 0 0;
+      font-size: 13px;
+    }
+  }
+  &__table {
+    margin-top: 12px;
+    box-shadow: none;
+  }
+  &__actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 10px;
+    font-size: 13px;
+  }
+  .notice {
+    margin: 8px 0;
+  }
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--text-2);
+  li {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  &__key {
+    display: inline-block;
+    &--rect {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+    }
+    &--line {
+      width: 14px;
+      height: 2px;
+      border-radius: 1px;
+    }
+    &--dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+    }
+  }
+}
+
+.chart-tooltip {
+  min-width: 160px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  font-size: 13px;
+  &__title {
+    margin-bottom: 4px;
+    color: var(--text-2);
+    font-weight: 600;
+  }
+  &__row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    strong {
+      color: var(--text);
+    }
+  }
+  &__key {
+    width: 12px;
+    height: 2px;
+    border-radius: 1px;
+    flex-shrink: 0;
+  }
+  &__label {
+    color: var(--text-muted);
+  }
+}
+
+// recharts 기본 포커스 외곽선 제거 (툴팁으로 대체)
+.recharts-wrapper,
+.recharts-surface {
+  outline: none;
+}

@@ -1,0 +1,135 @@
+@use '../mixins' as *;
+
+.recommend-intro {
+  margin-bottom: 18px;
+  h2 {
+    font-size: 20px;
+  }
+  p {
+    max-width: 820px;
+    margin: 6px 0 0;
+    font-size: 14px;
+  }
+}
+
+.toolbar__hp {
+  min-width: 220px;
+  input[type='range'] {
+    height: auto;
+    padding: 0;
+    border: none;
+    accent-color: var(--accent);
+  }
+}
+
+.pick-list {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+  @include md {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.pick-card {
+  @include card;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 16px;
+  text-align: left;
+  font-size: 13px;
+  &:hover {
+    border-color: var(--accent);
+  }
+  &__rank {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent-ink);
+  }
+  &__name {
+    font-size: 16px;
+  }
+  &__value {
+    font-size: 14px;
+    color: var(--text-2);
+    strong {
+      font-size: 22px;
+      color: var(--text);
+    }
+  }
+}
+
+.cell-sub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.rank-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rank-item {
+  @include card;
+  &__btn {
+    width: 100%;
+    padding: 12px 14px;
+    border: none;
+    background: none;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  &__rank {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    display: grid;
+    place-items: center;
+    border-radius: 6px;
+    background: var(--surface-2);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-2);
+  }
+  &__name {
+    flex: 1;
+    min-width: 0;
+    font-size: 15px;
+  }
+  &__metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    margin: 0;
+    dt {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    dd {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+    }
+  }
+  &__na {
+    margin: 0;
+    font-size: 13px;
+  }
+  &__foot {
+    font-size: 12px;
+  }
+}
